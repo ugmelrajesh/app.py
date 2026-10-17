@@ -4,8 +4,10 @@ Run:  streamlit run app.py
 """
 
 import time
+from contextlib import contextmanager
 from datetime import datetime
 
+import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -96,7 +98,7 @@ def fetch_indices() -> tuple[pd.DataFrame, str]:
                     df[c] = pd.to_numeric(df[c], errors="coerce")
             # Derived metrics
             df["rangePos"] = (
-                (df["last"] - df["low"]) / (df["high"] - df["low"]).replace(0, pd.NA)
+                (df["last"] - df["low"]) / (df["high"] - df["low"]).replace(0, np.nan)
             ) * 100
             df["from52wHigh"] = (df["last"] / df["yearHigh"] - 1) * 100
             df["from52wLow"] = (df["last"] / df["yearLow"] - 1) * 100
@@ -195,8 +197,19 @@ tab_over, tab_perf, tab_move, tab_val, tab_breadth, tab_data = st.tabs(
     ["🏠 Overview", "📊 Performance", "🚀 Top Movers", "💰 Valuation", "🌐 Breadth", "📄 Data"]
 )
 
+
+@contextmanager
+def safe(tab):
+    """Render a tab; show the real error inside it instead of crashing the whole app."""
+    with tab:
+        try:
+            yield
+        except Exception as e:  # noqa: BLE001
+            st.error("This tab hit an error. Details below.")
+            st.exception(e)
+
 # ---- Overview -------------------------------------------------------------
-with tab_over:
+with safe(tab_over):
     key_names = ["NIFTY 50", "NIFTY BANK", "NIFTY NEXT 50", "NIFTY MIDCAP 100",
                  "NIFTY IT", "INDIA VIX"]
     key = raw[raw["index"].isin(key_names)].set_index("index").reindex(
@@ -211,8 +224,9 @@ with tab_over:
 
     with c1:
         st.subheader("Market heatmap")
-        heat = df.copy()
+        heat = df.dropna(subset=["last", "percentChange"]).copy()
         heat["size"] = heat["last"].abs()
+        heat = heat[heat["size"] > 0]
         fig = px.treemap(
             heat, path=["Category", "index"], values="size",
             color="percentChange", color_continuous_scale="RdYlGn",
@@ -247,7 +261,7 @@ with tab_over:
         st.plotly_chart(fig, use_container_width=True)
 
 # ---- Performance ----------------------------------------------------------
-with tab_perf:
+with safe(tab_perf):
     st.subheader("Performance across time horizons")
     horizons = {"Today": "percentChange", "1 Week": "perChange7d",
                 "1 Month": "perChange30d", "1 Year": "perChange365d"}
@@ -275,7 +289,7 @@ with tab_perf:
     st.plotly_chart(fig, use_container_width=True)
 
 # ---- Top Movers -----------------------------------------------------------
-with tab_move:
+with safe(tab_move):
     n = st.slider("Show top N", 3, 20, 10, key="movers_n")
     g, l = st.columns(2)
     cols_show = ["index", "last", "variation", "percentChange"]
@@ -283,13 +297,13 @@ with tab_move:
         st.subheader("🟢 Top gainers")
         gain = df.nlargest(n, "percentChange")[cols_show].rename(columns=RENAME)
         st.dataframe(gain.style.format({"Last": "{:,.2f}", "Change": "{:+,.2f}", "% Change": "{:+.2f}%"})
-                     .background_gradient(subset=["% Change"], cmap="Greens"),
+                     .map(lambda v: "color: #16a34a", subset=["% Change"]),
                      hide_index=True, use_container_width=True)
     with l:
         st.subheader("🔴 Top losers")
         lose = df.nsmallest(n, "percentChange")[cols_show].rename(columns=RENAME)
         st.dataframe(lose.style.format({"Last": "{:,.2f}", "Change": "{:+,.2f}", "% Change": "{:+.2f}%"})
-                     .background_gradient(subset=["% Change"], cmap="Reds_r"),
+                     .map(lambda v: "color: #dc2626", subset=["% Change"]),
                      hide_index=True, use_container_width=True)
 
     st.subheader("Intraday range position")
@@ -301,7 +315,7 @@ with tab_move:
     st.plotly_chart(fig, use_container_width=True)
 
 # ---- Valuation ------------------------------------------------------------
-with tab_val:
+with safe(tab_val):
     st.subheader("Valuation metrics")
     val = df.dropna(subset=["pe", "pb"])
     val = val[(val["pe"] > 0) & (val["pb"] > 0)]
@@ -325,14 +339,14 @@ with tab_val:
                          hide_index=True, use_container_width=True)
 
 # ---- Breadth --------------------------------------------------------------
-with tab_breadth:
+with safe(tab_breadth):
     st.subheader("Constituent breadth (advances vs declines)")
     br = df.dropna(subset=["advances", "declines"]).copy()
     br = br[(br["advances"] + br["declines"]) > 0]
     if br.empty:
         st.info("No breadth data for the current selection.")
     else:
-        br["adRatio"] = br["advances"] / br["declines"].replace(0, pd.NA)
+        br["adRatio"] = br["advances"] / br["declines"].replace(0, np.nan)
         br["advPct"] = br["advances"] / (br["advances"] + br["declines"] + br["unchanged"].fillna(0)) * 100
         pick = st.multiselect("Indices", br["index"].tolist(),
                               default=[i for i in ["NIFTY 50", "NIFTY BANK", "NIFTY IT",
@@ -353,7 +367,7 @@ with tab_breadth:
                      hide_index=True, use_container_width=True)
 
 # ---- Data -----------------------------------------------------------------
-with tab_data:
+with safe(tab_data):
     st.subheader("Full data table")
     table_cols = [c for c in RENAME if c in df.columns] + ["Category"]
     table = df[table_cols].rename(columns=RENAME).sort_values("% Change", ascending=False)
