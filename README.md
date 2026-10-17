@@ -1,5 +1,3 @@
-# app.py
-nifty live dashboard
 # NSE Index Analysis Dashboard
 
 Real-time dashboard for NSE India indices built with Streamlit, pandas and Plotly.
