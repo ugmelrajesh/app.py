@@ -82,9 +82,10 @@ def _new_session() -> requests.Session:
     return s
 
 
-@st.cache_data(ttl=30, show_spinner=False)
-def fetch_indices() -> tuple[pd.DataFrame, str]:
-    """Fetch all NSE indices. Cached for 30s to avoid hammering the API."""
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_indices(bucket: int = 0) -> tuple[pd.DataFrame, str]:
+    """Fetch all NSE indices. `bucket` is a time slice (now // interval), so the cache
+    expires once per refresh interval."""
     last_err = None
     for attempt in range(3):
         try:
@@ -135,7 +136,7 @@ def categorize(name: str) -> str:
 st.sidebar.title("⚙️ Controls")
 
 auto = st.sidebar.toggle("Auto-refresh", value=True)
-interval = st.sidebar.slider("Refresh interval (sec)", 15, 300, 60, step=15, disabled=not auto)
+interval = st.sidebar.slider("Refresh interval (sec)", 1, 300, 60, step=1, disabled=not auto)
 if auto and st_autorefresh is not None:
     st_autorefresh(interval=interval * 1000, key="nse_autorefresh")
 elif auto:
@@ -152,7 +153,7 @@ st.title("📈 NSE Index Analysis Dashboard")
 
 try:
     with st.spinner("Fetching live NSE data…"):
-        raw, as_of = fetch_indices()
+        raw, as_of = fetch_indices(int(time.time() // (interval if auto else 30)))
 except Exception as e:  # noqa: BLE001
     st.error(str(e))
     st.info("NSE sometimes throttles requests or blocks cloud IPs. "

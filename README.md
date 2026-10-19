@@ -13,8 +13,8 @@ streamlit run app.py
 
 ## Features
 
-- Live data from the NSE `allIndices` API (cookie handshake + retries, 30s cache)
-- Auto-refresh (15–300 s) and manual refresh
+- Live data from the NSE `allIndices` API (cookie handshake + retries, cache follows refresh interval)
+- Auto-refresh (1–300 s) and manual refresh
 - Tabs: Overview (KPIs, heatmap), Performance (1D/1W/1M/1Y, 52-week position),
   Top Movers, Valuation (P/E, P/B, dividend yield), Breadth, Data
 - Sidebar filters: search, category, gainers/losers, % change range
